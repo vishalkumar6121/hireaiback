@@ -13,6 +13,7 @@ class CandidateCreate(BaseModel):
     desired_position: Optional[str] = None
     status: str = "new"
     resume_url: Optional[str] = None
+    summary: Optional[str] = None
 
 class CandidateUpdate(BaseModel):
     full_name: Optional[str] = None
@@ -24,6 +25,7 @@ class CandidateUpdate(BaseModel):
     current_position: Optional[str] = None
     desired_position: Optional[str] = None
     resume_url: Optional[str] = None
+    summary: Optional[str] = None
 
 class Candidate(BaseModel):
     id: str

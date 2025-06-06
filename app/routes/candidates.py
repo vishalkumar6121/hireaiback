@@ -15,32 +15,59 @@ supabase: Client = create_client(
     os.getenv("SUPABASE_KEY")
 )
 
-@router.get("/search", response_model=List[Candidate])
+@router.get("/search", response_model=Dict[str, Any])
 async def search_candidates(
+    request: Request,
     query: Optional[str] = None,
     skills: Optional[List[str]] = None,
     location: Optional[str] = None,
-    min_experience: Optional[int] = None,
-    token: str = Depends(verify_token)
+    min_experience: Optional[int] = None
 ):
-    # Build query
-    query_builder = supabase.table("candidates").select("*")
-    
-    if query:
-        query_builder = query_builder.ilike("full_name", f"%{query}%")
-    
-    if skills:
-        for skill in skills:
-            query_builder = query_builder.contains("skills", [skill])
-    
-    if location:
-        query_builder = query_builder.eq("location", location)
-    
-    if min_experience:
-        query_builder = query_builder.gte("experience_years", min_experience)
-    
-    result = query_builder.execute()
-    return result.data
+    try:
+        # Get authorization header
+        authorization = request.headers.get("Authorization")
+
+        # Extract token from Authorization header
+        if not authorization or not authorization.startswith("Bearer "):
+            return {
+                "success": False,
+                "data": "Invalid authorization header. Expected 'Bearer <token>'"
+            }
+
+        token = authorization.split(" ")[1]
+
+        # Verify token (optional, depending on if search needs user ID)
+        # payload = verify_token(token)
+        # user_id = payload.get("sub")
+
+        # Build query
+        query_builder = supabase.table("candidates").select("*")
+
+        if query:
+            query_builder = query_builder.ilike("full_name", f"%{query}%")
+
+        if skills:
+            for skill in skills:
+                query_builder = query_builder.contains("skills", [skill])
+
+        if location:
+            query_builder = query_builder.eq("location", location)
+
+        if min_experience:
+            query_builder = query_builder.gte("experience_years", min_experience)
+
+        result = query_builder.execute()
+
+        return {
+            "success": True,
+            "data": result.data
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "data": f"Failed to search candidates: {str(e)}"
+        }
 
 @router.get("/leaderboard", response_model=List[Candidate])
 async def get_leaderboard(token: str = Depends(verify_token)):
@@ -113,4 +140,56 @@ async def create_candidate_endpoint(
         return {
             "success": False,
             "data": f"Failed to create candidate: {str(e)}"
+        }
+
+@router.get("/{candidate_id}", response_model=Dict[str, Any])
+async def get_candidate_details(
+    candidate_id: str,
+    request: Request
+):
+    try:
+        # Get authorization header
+        authorization = request.headers.get("Authorization")
+
+        # Extract token from Authorization header
+        if not authorization or not authorization.startswith("Bearer "):
+            return {
+                "success": False,
+                "data": "Invalid authorization header. Expected 'Bearer <token>'"
+            }
+
+        token = authorization.split(" ")[1]
+
+        # Optional: Verify token if needed for RLS or user-specific logic
+        # payload = verify_token(token)
+        # user_id = payload.get("sub")
+
+        # Fetch candidate from Supabase
+        result = supabase.table("candidates")\
+            .select("*")\
+            .eq("id", candidate_id)\
+            .single()\
+            .execute()
+
+        if not result.data:
+            return {
+                "success": False,
+                "data": "Candidate not found"
+            }
+
+        return {
+            "success": True,
+            "data": result.data
+        }
+
+    except Exception as e:
+        # Check for Supabase-specific errors like not found
+        if "PGRST" in str(e): # Supabase specific error indicator
+            return {
+                "success": False,
+                "data": "Candidate not found or database error" # Or more specific error from e
+            }
+        return {
+            "success": False,
+            "data": f"Failed to fetch candidate details: {str(e)}"
         }

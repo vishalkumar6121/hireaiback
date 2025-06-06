@@ -23,7 +23,6 @@ from docx import Document
 from supabase import create_client, Client
 import uuid
 import json
-from pyresparser import ResumeParser
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -290,8 +289,8 @@ def extract_personal_info(text: str) -> Dict[str, str]:
         "summary": ""    # Summary extraction would require more complex NLP
     }
 
-async def parse_resume_pyresparser(file: UploadFile) -> Dict[str, Any]:
-    """Parse resume using pyresparser library."""
+async def parse_resume(file: UploadFile) -> Dict[str, Any]:
+    """Parse resume using spaCy-based implementation only."""
     try:
         # Read file content
         file_content = await file.read()
@@ -302,108 +301,32 @@ async def parse_resume_pyresparser(file: UploadFile) -> Dict[str, Any]:
                 detail="Empty file received"
             )
         
-        # Create a temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
-            temp_file.write(file_content)
-            temp_file_path = temp_file.name
-
-        try:
-            # Parse resume using pyresparser
-            data = ResumeParser(temp_file_path).get_extracted_data()
-            
-            # Structure the extracted information
-            extracted_info = {
-                "skills": {
-                    "technical": data.get("skills", []),
-                    "soft_skills": []  # pyresparser doesn't distinguish between technical and soft skills
-                },
-                "education": [
-                    {
-                        "degree": edu.get("degree", ""),
-                        "institution": edu.get("institution", ""),
-                        "year": edu.get("year", "")
-                    }
-                    for edu in data.get("education", [])
-                ],
-                "experience": [
-                    {
-                        "company": exp.get("company", ""),
-                        "position": exp.get("position", ""),
-                        "duration": exp.get("duration", ""),
-                        "description": exp.get("description", "")
-                    }
-                    for exp in data.get("experience", [])
-                ],
-                "personal_info": {
-                    "name": data.get("name", ""),
-                    "email": data.get("email", ""),
-                    "phone": data.get("phone", ""),
-                    "location": data.get("location", ""),
-                    "summary": data.get("summary", "")
-                },
-                "filename": file.filename,
-                "content_type": file.content_type
-            }
-            
-            logger.debug(f"Parsed resume data using pyresparser: {json.dumps(extracted_info, indent=2)}")
-            
-            return extracted_info
-            
-        finally:
-            # Clean up the temporary file
-            os.unlink(temp_file_path)
+        # Extract text from file
+        text = extract_text_from_file(file_content, file.content_type)
+        
+        # Extract information using spaCy
+        skills = extract_skills(text)
+        education = extract_education(text)
+        experience = extract_experience(text)
+        personal_info = extract_personal_info(text)
+        
+        extracted_info = {
+            "skills": skills,
+            "education": education,
+            "experience": experience,
+            "personal_info": personal_info,
+            "filename": file.filename,
+            "content_type": file.content_type
+        }
+        
+        return extracted_info
         
     except Exception as e:
-        logger.error(f"Resume parsing failed with pyresparser: {str(e)}")
+        logger.error(f"Resume parsing failed with spaCy: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to parse resume: {str(e)}"
         )
-
-async def parse_resume(file: UploadFile, parser_type: str = "spacy") -> Dict[str, Any]:
-    """Parse resume using the specified parser type."""
-    if parser_type == "pyresparser":
-        return await parse_resume_pyresparser(file)
-    else:
-        # Use the existing spaCy-based implementation
-        try:
-            # Read file content
-            file_content = await file.read()
-            
-            if not file_content:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Empty file received"
-                )
-            
-            # Extract text from file
-            text = extract_text_from_file(file_content, file.content_type)
-            
-            # Extract information using spaCy
-            skills = extract_skills(text)
-            education = extract_education(text)
-            experience = extract_experience(text)
-            personal_info = extract_personal_info(text)
-            
-            extracted_info = {
-                "skills": skills,
-                "education": education,
-                "experience": experience,
-                "personal_info": personal_info,
-                "filename": file.filename,
-                "content_type": file.content_type
-            }
-            
-            # logger.debug(f"Parsed resume data using spaCy: {extracted_info}")
-            
-            return extracted_info
-            
-        except Exception as e:
-            logger.error(f"Resume parsing failed with spaCy: {str(e)}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to parse resume: {str(e)}"
-            )
 
 async def upload_resume(file: UploadFile, user_id: str) -> dict:
     """Upload resume to Supabase storage and update user record."""
@@ -447,9 +370,9 @@ async def upload_resume(file: UploadFile, user_id: str) -> dict:
             
             # Update user record
             db_result = supabase.table("users")\
-                .update(update_data)\
+            .update(update_data)\
                 .eq("id", user_id)\
-                .execute()
+            .execute()
                 
             logger.debug(f"Database update result: {db_result}")
             

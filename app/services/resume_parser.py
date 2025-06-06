@@ -1,6 +1,6 @@
 from typing import Dict, Any, Optional
 import spacy
-from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 from langchain.prompts import ChatPromptTemplate
 from langchain.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
@@ -15,11 +15,10 @@ load_dotenv()
 # Load spaCy model
 nlp = spacy.load("en_core_web_sm")
 
-# Initialize LangChain with OpenAI
-llm = ChatOpenAI(
-    model="gpt-4-turbo-preview",
-    temperature=0,
-    api_key=os.getenv("OPENAI_API_KEY")
+# Initialize LangChain with Groq
+llm = ChatGroq(
+    model="llama3-70b-8192",  # or another Groq-supported model
+    api_key=os.getenv("GROQ_API_KEY")
 )
 
 class ResumeData(BaseModel):
@@ -29,9 +28,9 @@ class ResumeData(BaseModel):
     phone: Optional[str] = Field(description="Phone number")
     skills: list[str] = Field(description="List of technical and soft skills")
     experience: list[Dict[str, Any]] = Field(description="List of work experiences with company, role, duration, and description")
-    education: list[Dict[str, Any]] = Field(description="List of educational qualifications")
-    summary: str = Field(description="Professional summary or objective")
-    years_of_experience: float = Field(description="Total years of experience")
+    education: Optional[list[Dict[str, Any]]] = Field(default=None, description="List of educational qualifications")
+    summary: Optional[str] = Field(default=None, description="Professional summary or objective")
+    years_of_experience: Optional[float] = Field(default=None, description="Total years of experience")
 
 def extract_text_from_pdf(file_content: bytes) -> str:
     """Extract text from PDF file"""
@@ -91,28 +90,38 @@ async def parse_resume(file_content: bytes, file_extension: str) -> Dict[str, An
     
     # Create prompt for LLM
     prompt = ChatPromptTemplate.from_messages([
-        ("system", """You are an expert resume parser. Extract the following information from the resume:
+        ("system", """You are an expert resume parser. Your task is to extract key information from a resume and output it as a JSON object strictly following the provided schema. Do not include any extra text, explanations, or markdown formatting (like ```json) outside of the JSON object itself. Only output the raw JSON.
+        
+        Extract the following information:
         - Full name
         - Email address
         - Phone number
-        - Work experience (company, role, duration, description)
-        - Education (institution, degree, year)
+        - Work experience (list of entries with company, role, duration, and description. Each entry must be a single JSON object with no duplicate keys.)
+        - Education (list of entries with institution, degree, and year)
         - Professional summary
-        - Total years of experience
-        
-        Format the output as a JSON object matching the ResumeData schema."""),
-        ("user", "Here is the resume text:\n{text}")
+        - Total years of experience (as a number)
+
+        Format the output as a JSON object matching the ResumeData schema. Ensure all keys match the schema exactly."""),
+        ("user", "Here is the resume text:\n{text}\n\n{format_instructions}")
     ])
     
     # Create output parser
     parser = PydanticOutputParser(pydantic_object=ResumeData)
     
-    # Chain the components
-    chain = prompt | llm | parser
+    # Create a chain to get raw LLM output
+    raw_output_chain = prompt | llm
     
+    # Get format instructions from the parser
+    format_instructions = parser.get_format_instructions()
+
     # Parse resume
     try:
-        result = await chain.ainvoke({"text": text})
+        # Get raw output from the LLM
+        raw_llm_output = await raw_output_chain.ainvoke({"text": text, "format_instructions": format_instructions})
+        print("Raw LLM Output:", raw_llm_output)
+
+        # Parse the raw output using Pydantic parser
+        result = parser.invoke(raw_llm_output)
         
         # Add extracted skills to the result
         result_dict = result.dict()
@@ -120,4 +129,6 @@ async def parse_resume(file_content: bytes, file_extension: str) -> Dict[str, An
         
         return result_dict
     except Exception as e:
+        print("Error during parsing:", str(e))
+        # Re-raise a more informative error
         raise Exception(f"Failed to parse resume: {str(e)}") 

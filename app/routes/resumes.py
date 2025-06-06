@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException, status, UploadFile, File, Request
 from app.services.auth import verify_token
-from app.services.resume import parse_resume
+from app.services.resume_parser import parse_resume
 import logging
 import os
+from typing import Dict, Any
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -57,10 +58,12 @@ async def upload_resume_endpoint(
                 "data": f"Unsupported file type. Allowed types: {', '.join(allowed_types)}"
             }
         
-        # Parse resume and extract information
-        result = await parse_resume(file)
-        logger.debug(f"Parsing result: {result}")
-        
+        # Read file content
+        file_content = await file.read()
+
+        # Parse resume using Groq-powered parser
+        result = await parse_resume(file_content, file_extension)
+
         return {
             "success": True,
             "data": result
