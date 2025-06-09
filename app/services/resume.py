@@ -2,6 +2,7 @@ import nltk
 import os
 import sys
 
+print("Resume Service: Starting...")
 # Download required NLTK data first
 nltk.download('stopwords', quiet=True)
 nltk.download('punkt', quiet=True)
@@ -9,6 +10,8 @@ nltk.download('averaged_perceptron_tagger', quiet=True)
 nltk.download('universal_tagset', quiet=True)
 nltk.download('maxent_ne_chunker', quiet=True)
 nltk.download('words', quiet=True)
+
+print("Resume Service: Medium...")
 
 from fastapi import UploadFile, HTTPException, status
 from dotenv import load_dotenv
@@ -30,11 +33,17 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
+print("Resume Service: Environment variables loaded.")
+print(f"Resume Service: SUPABASE_URL: {os.getenv('SUPABASE_URL')}")
+print(f"Resume Service: SUPABASE_KEY (first 5 chars): {os.getenv('SUPABASE_KEY')[:5] if os.getenv('SUPABASE_KEY') else None}")
+
 # Initialize Supabase client
+print("Resume Service: Initializing Supabase client...")
 supabase: Client = create_client(
     os.getenv("SUPABASE_URL"),
     os.getenv("SUPABASE_KEY")
 )
+print("Resume Service: Supabase client initialized.")
 
 # Load spaCy model
 try:

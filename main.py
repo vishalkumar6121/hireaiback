@@ -6,8 +6,10 @@ from supabase import create_client, Client
 from app.routes import auth, candidates, outreach, analytics, resumes, user_profile
 from app.services.auth import verify_token
 from app.services.resume import upload_resume
+
 from typing import Dict, Any
 import logging
+
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
